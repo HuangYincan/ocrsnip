@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>ocrsnip</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.acc.ocrsnip</string>
+    <key>CFBundleName</key>
+    <string>ocrsnip</string>
+    <key>CFBundleDisplayName</key>
+    <string>ocrsnip</string>
+    <key>CFBundleVersion</key>
+    <string>2</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.2.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>ocrsnip 需要屏幕录制权限，用于框选区域识别文字或置顶截图。</string>
+    <key>NSAccessibilityUsageDescription</key>
+    <string>ocrsnip 需要辅助功能权限，用于拦截 ⌘⇧2 / ⌘⇧3 全局快捷键。</string>
+</dict>
+</plist>

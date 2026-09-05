@@ -1,3 +1,18 @@
+# Build artifacts
+/ocrsnip
 *.dmg
 *.app
+dist/
+dist-hotkey-fix/
+dmg_staging/
+
+# Local tests
+tests/
+
+# Signing secrets
+*.p12
+*.pem
+
+# Tooling
 .DS_Store
+.claude/

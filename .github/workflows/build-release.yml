@@ -17,41 +17,16 @@ jobs:
 
       - name: Build binary
         run: |
-          swiftc main.swift -o ocrsnip \
-            -framework AppKit -framework Vision -framework Carbon
+          swiftc ScreenCaptureStrategy.swift OCRClipboard.swift LaunchAtLogin.swift main.swift -o ocrsnip \
+            -framework AppKit -framework Vision -framework Carbon \
+            -framework ScreenCaptureKit -framework ApplicationServices \
+            -framework ServiceManagement
 
       - name: Bundle app
         run: |
           mkdir -p "ocrsnip.app/Contents/MacOS"
-          mkdir -p "ocrsnip.app/Contents/Resources"
           cp ocrsnip "ocrsnip.app/Contents/MacOS/ocrsnip"
-          cp ocrsnip "ocrsnip.app/Contents/Resources/ocrsnip"
-          cat > "ocrsnip.app/Contents/Info.plist" <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>ocrsnip</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.acc.ocrsnip</string>
-              <key>CFBundleName</key>
-              <string>ocrsnip</string>
-              <key>CFBundleDisplayName</key>
-              <string>ocrsnip</string>
-              <key>CFBundleVersion</key>
-              <string>1</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>LSMinimumSystemVersion</key>
-              <string>14.0</string>
-          </dict>
-          </plist>
-          PLIST
-          # fix leading whitespace from heredoc indentation
-          perl -pi -e 's/^ {10}//' "ocrsnip.app/Contents/Info.plist"
+          cp Info.plist "ocrsnip.app/Contents/Info.plist"
 
       - name: Build DMG
         run: |
