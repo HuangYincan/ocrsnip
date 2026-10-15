@@ -730,6 +730,15 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
         defer { isCapturingRegion = false }
         appToRestoreAfterCapture = NSWorkspace.shared.frontmostApplication
 
+        // A changed signing identity can invalidate an existing TCC grant.
+        // captureImage(in:) may still return a blank/redacted image, so do not
+        // treat a non-nil image as proof that Screen Recording is authorized.
+        guard CGPreflightScreenCaptureAccess() else {
+            appToRestoreAfterCapture = nil
+            showScreenRecordingPermissionAlert()
+            return nil
+        }
+
         switch ScreenCaptureStrategy.preferred() {
         case .nativeRegionSelection:
             if #available(macOS 15.2, *) {
@@ -738,6 +747,36 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
             return await captureWithLegacyScreencapture()
         case .legacyScreencaptureCLI:
             return await captureWithLegacyScreencapture()
+        }
+    }
+
+    @MainActor
+    private func showScreenRecordingPermissionAlert() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "需要屏幕录制权限"
+        alert.informativeText = """
+        ocrsnip 当前无法读取屏幕内容，已停止截图。
+
+        首次使用请点击「请求授权」。请在「系统设置 → 隐私与安全性 → 屏幕与系统音频录制（或屏幕录制）」中允许 ocrsnip，然后完全退出并重新打开，再次按快捷键截图。
+
+        更新或重新签名后，旧授权可能失效。若开关已经打开，请先关闭再开启；仍无效时，移除旧条目，再添加 Applications 中的 ocrsnip。
+        """
+        alert.addButton(withTitle: "请求授权")
+        alert.addButton(withTitle: "打开系统设置")
+        alert.addButton(withTitle: "取消")
+        NSApp.activate(ignoringOtherApps: true)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            // Only request on an explicit click. The caller ends this capture
+            // attempt even if access is granted, so no overlay covers the OS UI.
+            _ = CGRequestScreenCaptureAccess()
+        case .alertSecondButtonReturn:
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                NSWorkspace.shared.open(url)
+            }
+        default:
+            break
         }
     }
 

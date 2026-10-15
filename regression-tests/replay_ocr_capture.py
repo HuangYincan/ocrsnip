@@ -25,6 +25,13 @@ var prematureSound = false
 var soundCount = 0
 var recognitionResult = OCRRecognizeResult.text("recognized text")
 var copySucceeds = true
+var screenCaptureAllowed = true
+func CGPreflightScreenCaptureAccess() -> Bool { screenCaptureAllowed }
+enum ScreenCaptureStrategy {
+    enum Backend { case nativeRegionSelection, legacyScreencaptureCLI }
+    static var backend = Backend.nativeRegionSelection
+    static func preferred() -> Backend { backend }
+}
 enum CaptureSound {
     static func playShutter() {
         soundCount += 1
@@ -55,12 +62,18 @@ enum OCRClipboard {
     var isRunningOCR = false
     var isCapturingRegion = false
     var captureCount = 0
-    func captureRegionImage() async -> NSImage? {
+    var permissionAlertCount = 0
+    var appToRestoreAfterCapture: NSRunningApplication?
+    func showScreenRecordingPermissionAlert() { permissionAlertCount += 1 }
+    func captureWithLegacyScreencapture() async -> NSImage? {
         captureCount += 1
-        return await captureWithNativeRegionSelection()
+        return NSImage()
     }
     func restorePreviousApp() {}
-    func captureDisplaySnapshots() async throws -> [CGImage] { [OCRClipboard.cgImage(from: NSImage())!] }
+    func captureDisplaySnapshots() async throws -> [CGImage] {
+        captureCount += 1
+        return [OCRClipboard.cgImage(from: NSImage())!]
+    }
     func cropSnapshot(_ snapshots: [CGImage], cocoaRect: CGRect) -> CGImage? { snapshots.first }
     func sendNotification(title: String, body: String) {}
     static func screenCaptureErrorMessage(_ error: Error) -> String { error.localizedDescription }
@@ -68,11 +81,32 @@ enum OCRClipboard {
 # Match the historical call signature so this replay can verify the old failure.
 code = code.replace('COPY_ASYNC', 'async' if 'await OCRClipboard.copyToPasteboard' in source else '')
 code += '\n'.join(method(name) for name in [
-    'captureWithNativeRegionSelection', 'recognizeText', 'captureAndOCR'
+    'captureRegionImage', 'captureWithNativeRegionSelection', 'recognizeText', 'captureAndOCR'
 ]) + '\n}\n'
 code += r'''
 @main struct Test {
     @MainActor static func main() async {
+        for backend in [ScreenCaptureStrategy.Backend.nativeRegionSelection, .legacyScreencaptureCLI] {
+            ScreenCaptureStrategy.backend = backend
+            screenCaptureAllowed = false
+            let denied = Replay()
+            let deniedImage = await denied.captureRegionImage()
+            guard deniedImage == nil, denied.captureCount == 0, denied.permissionAlertCount == 1,
+                  !denied.isCapturingRegion, denied.appToRestoreAfterCapture == nil else {
+                print("FAIL: denied Screen Recording must show guidance and stop before capture; backend=\(backend), captureCount=\(denied.captureCount)")
+                exit(1)
+            }
+            screenCaptureAllowed = true
+            let allowed = Replay()
+            let allowedImage = await allowed.captureRegionImage()
+            guard allowedImage != nil, allowed.captureCount == 1, allowed.permissionAlertCount == 0,
+                  !allowed.isCapturingRegion else {
+                print("FAIL: granted Screen Recording must allow capture without a permission prompt")
+                exit(1)
+            }
+        }
+        ScreenCaptureStrategy.backend = .nativeRegionSelection
+        print("PASS: denied Screen Recording blocks both backends; granted access captures without prompting")
         for (result, canCopy, expectedSounds) in [
             (OCRRecognizeResult.text("recognized text"), true, 1),
             (.text("recognized text"), false, 0),
