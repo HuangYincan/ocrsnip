@@ -527,6 +527,7 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
     private var hotKeyRefs: [EventHotKeyRef] = []
     private var pinnedWindows: [PinnedScreenshotWindow] = []
     private var isCapturingRegion = false
+    private var isRunningOCR = false
     private var appToRestoreAfterCapture: NSRunningApplication?
     private static let maxPinnedWindowCount = 8
     private static let statusNotificationID = "ocrsnip.status"
@@ -688,11 +689,16 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
     @objc func captureAndOCR() {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            guard !self.isRunningOCR, !self.isCapturingRegion else { return }
+            self.isRunningOCR = true
+            defer { self.isRunningOCR = false }
             guard let image = await self.captureRegionImage() else {
                 self.restorePreviousApp()
                 return
             }
             self.restorePreviousApp()
+            self.statusItem.button?.title = "⏳"
+            defer { self.statusItem.button?.title = "📷" }
             await self.recognizeText(in: image)
         }
     }
@@ -700,6 +706,7 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
     @objc func captureAndPinScreenshot() {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            guard !self.isCapturingRegion else { return }
             guard let image = await self.captureRegionImage() else {
                 self.restorePreviousApp()
                 return
@@ -712,6 +719,7 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
             window.makeFirstResponder(window.contentView)
+            CaptureSound.playShutter()
         }
     }
 
@@ -747,7 +755,6 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
                 return nil
             }
             snapshots.removeAll()
-            CaptureSound.playShutter()
             return NSImage(cgImage: cropped, size: rect.size)
         } catch {
             sendNotification(title: "⚠️ 截图失败", body: Self.screenCaptureErrorMessage(error))
@@ -821,7 +828,8 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        proc.arguments = ["-i", path.path]
+        // Both capture backends stay silent; each caller signals completion.
+        proc.arguments = ["-i", "-x", path.path]
 
         let ran: Bool = await withCheckedContinuation { continuation in
             proc.terminationHandler = { _ in
@@ -843,6 +851,7 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
         return image
     }
 
+    @MainActor
     private func recognizeText(in image: NSImage) async {
         guard let cgImage = OCRClipboard.cgImage(from: image) else {
             sendNotification(title: "⚠️ OCR 失败", body: "无法读取截图")
@@ -855,10 +864,11 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
 
         switch result {
         case .text(let text):
-            guard OCRClipboard.copyToPasteboard(text) else {
-                sendNotification(title: "⚠️ 无法写入剪贴板", body: "请检查粘贴板后重试")
+            guard await OCRClipboard.copyToPasteboard(text) else {
+                sendNotification(title: "⚠️ 无法写入剪贴板", body: "已重试 3 次，仍未能确认文字写入，请重新截图")
                 return
             }
+            CaptureSound.playShutter()
             sendNotification(title: "✓ OCR 完成", body: "文字已复制到剪贴板")
         case .empty:
             sendNotification(title: "⚠️ 未识别到文字", body: "请框选更清晰的文字区域后再试")
@@ -962,7 +972,6 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
         let content = UNMutableNotificationContent()
         content.title = title
         content.body  = body
-        content.sound = .default
 
         let request = UNNotificationRequest(
             identifier: Self.statusNotificationID,
@@ -977,7 +986,7 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
         willPresent _: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .list, .sound])
+        completionHandler([.banner, .list])
     }
 
     func menuNeedsUpdate(_: NSMenu) {

@@ -1,5 +1,15 @@
 import AppKit
 import Vision
+import OSLog
+
+@MainActor
+protocol OCRTextPasteboard {
+    func clearContents() -> Int
+    func setString(_ string: String, forType dataType: NSPasteboard.PasteboardType) -> Bool
+    func string(forType dataType: NSPasteboard.PasteboardType) -> String?
+}
+
+extension NSPasteboard: OCRTextPasteboard {}
 
 enum OCRRecognizeResult: Equatable, Sendable {
     case text(String)
@@ -8,6 +18,8 @@ enum OCRRecognizeResult: Equatable, Sendable {
 }
 
 enum OCRClipboard {
+    private static let logger = Logger(subsystem: "com.acc.ocrsnip", category: "OCR")
+
     static func cgImage(from image: NSImage) -> CGImage? {
         var proposed = CGRect(origin: .zero, size: image.size)
         if let cgImage = image.cgImage(forProposedRect: &proposed, context: nil, hints: nil) {
@@ -32,6 +44,8 @@ enum OCRClipboard {
                 }
                 recognizedEmpty = true
             } catch {
+                let error = error as NSError
+                logger.error("Vision recognition failed (accurate: \(level == .accurate)): \(error.domain, privacy: .public) code \(error.code)")
                 continue
             }
         }
@@ -39,10 +53,27 @@ enum OCRClipboard {
     }
 
     @discardableResult
-    static func copyToPasteboard(_ text: String) -> Bool {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        return pasteboard.setString(text, forType: .string)
+    @MainActor
+    static func copyToPasteboard(
+        _ text: String,
+        pasteboard: any OCRTextPasteboard = NSPasteboard.general,
+        retryDelay: () async -> Void = {
+            try? await Task.sleep(for: .milliseconds(75))
+        }
+    ) async -> Bool {
+        for attempt in 1...3 {
+            guard !Task.isCancelled else { return false }
+            _ = pasteboard.clearContents()
+            if pasteboard.setString(text, forType: .string),
+               pasteboard.string(forType: .string) == text {
+                return true
+            }
+            logger.warning("Pasteboard write or readback failed (attempt \(attempt)/3)")
+            if attempt < 3 {
+                await retryDelay()
+            }
+        }
+        return false
     }
 
     static func isAlreadySRGB8(_ image: CGImage) -> Bool {

@@ -26,6 +26,8 @@
 | 菜单栏 **📷** 图标 | 可手动触发、关闭全部置顶截图、开关开机自启或退出 |
 | 菜单栏 **开机自启** | 登录 macOS 时自动打开 ocrsnip（勾选即开） |
 
+OCR 识别期间菜单栏显示 ⏳；听到快门声表示文字已写入剪贴板并读回确认，此时可按 ⌘V 粘贴。写入失败会自动重试，最多 3 次。未识别到文字或失败时仅显示通知，不播放完成提示音。
+
 > 注意：⌘⇧3 是 macOS 自带的全屏截图快捷键。程序会通过辅助功能事件监听拦截 ⌘⇧2 / ⌘⇧3；如果没有响应，请在“系统设置 → 隐私与安全性 → 辅助功能”中允许 ocrsnip，并完全退出后重新打开。若不允许辅助功能，也可以关闭系统自带的 ⌘⇧3，此时会回退到 Carbon 热键。
 
 | 层 | 技术 |
@@ -54,6 +56,8 @@ swiftc ScreenCaptureStrategy.swift OCRClipboard.swift LaunchAtLogin.swift main.s
 ```
 
 上面这条只生成裸二进制，调试可以，日常请走 `scripts/build.sh`。
+
+运行 OCR 回归测试：`zsh scripts/test-ocr.sh`。加 `--integration` 可测试真实 Vision 识别及独立的 macOS 测试剪贴板，不改动日常剪贴板。
 
 ## 许可
 
