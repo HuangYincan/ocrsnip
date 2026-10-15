@@ -15,18 +15,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Build binary
-        run: |
-          swiftc ScreenCaptureStrategy.swift OCRClipboard.swift LaunchAtLogin.swift main.swift -o ocrsnip \
-            -framework AppKit -framework Vision -framework Carbon \
-            -framework ScreenCaptureKit -framework ApplicationServices \
-            -framework ServiceManagement
-
-      - name: Bundle app
-        run: |
-          mkdir -p "ocrsnip.app/Contents/MacOS"
-          cp ocrsnip "ocrsnip.app/Contents/MacOS/ocrsnip"
-          cp Info.plist "ocrsnip.app/Contents/Info.plist"
+      # Seal the complete bundle, not just the linker-signed executable.
+      # Ad-hoc signing verifies integrity; it does not replace Developer ID
+      # signing and notarization for Gatekeeper approval.
+      - name: Build and sign app
+        env:
+          OCRSNIP_SIGN_IDENTITY: '-'
+          OCRSNIP_APP_DIR: ${{ github.workspace }}/ocrsnip.app
+        run: zsh scripts/build.sh
 
       - name: Build DMG
         run: |
@@ -36,11 +32,20 @@ jobs:
           hdiutil create -volname "ocrsnip" \
             -srcfolder dmg_staging -ov -format UDZO ocrsnip.dmg
 
+      - name: Verify packaged app
+        run: |
+          hdiutil verify ocrsnip.dmg
+          mount_dir="$(mktemp -d)"
+          hdiutil attach ocrsnip.dmg -readonly -nobrowse -mountpoint "$mount_dir"
+          trap 'hdiutil detach "$mount_dir"; rmdir "$mount_dir"' EXIT
+          codesign --verify --deep --strict --verbose=2 "$mount_dir/ocrsnip.app"
+
       - name: Create Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
+            --notes "应用已进行完整的 ad-hoc 签名，并通过 DMG 内的签名校验。尚未使用 Apple Developer ID 签名和公证，首次打开可能需要在「系统设置 → 隐私与安全性 → 仍要打开」中放行，详见 README 安装说明。" \
             --generate-notes \
             ocrsnip.dmg

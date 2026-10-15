@@ -13,7 +13,27 @@
 2. 双击打开,将 `ocrsnip.app` 拖入 **Applications** 文件夹
 3. 首次打开需授权: **系统设置 → 隐私与安全性 → 辅助功能 + 屏幕录制**（授权后请完全退出再打开；之后不应再反复弹窗）。菜单栏打开「开机自启」后，若系统要求确认，请在 **系统设置 → 通用 → 登录项** 中允许 ocrsnip。
 
-本地开发请用 `zsh scripts/build.sh` 打包。脚本会用固定的 `ocrsnip Developer` 证书签名，辅助功能和屏幕录制授权会跟着证书走，而不是跟着每次编译变化的 ad-hoc CDHash。首次签名时钥匙串会询问是否允许 `codesign` 使用该证书；不要把这张开发证书当成信任锚。若旧脚本曾把证书的 ACL 开放给任意 `codesign`，请在钥匙串删除 “ocrsnip Developer” 后设 `OCRSNIP_RESET_DEV_CERT=1` 再构建。从 GitHub 下载的未签名构建每换一个二进制仍可能再问一次。对外分发请用 Apple Developer ID 签名并公证。
+GitHub 构建尚未使用 Apple Developer ID 签名和公证。从 v0.2.2 起，发布流程会对完整应用做 ad-hoc 签名，并在发布前校验 DMG 内的应用，校验失败会停止发布。首次打开仍可能被 Gatekeeper 阻止。确认来源是本项目后，先尝试打开一次，再到 **系统设置 → 隐私与安全性 → 仍要打开** 放行。
+
+### 提示“已损坏，无法打开”
+
+已确认 v0.2.1 的发布包遗漏了完整 `.app` 签名，导致签名校验失败。若已从本项目 Releases 下载并拖入 Applications，可在终端修复该应用的签名：
+
+```bash
+codesign --force --sign - --identifier com.acc.ocrsnip /Applications/ocrsnip.app
+codesign --verify --deep --strict --verbose=2 /Applications/ocrsnip.app
+```
+
+校验通过后重新打开，并按上面的“仍要打开”步骤放行。若仍无法打开，且确认下载来源可信，可仅移除该应用的下载隔离标记后重试：
+
+```bash
+xattr -dr com.apple.quarantine /Applications/ocrsnip.app
+open /Applications/ocrsnip.app
+```
+
+这不会关闭系统全局 Gatekeeper。重新签名后，辅助功能和屏幕录制权限可能需要重新授权。
+
+本地开发请用 `zsh scripts/build.sh` 打包。脚本会用固定的 `ocrsnip Developer` 证书签名，辅助功能和屏幕录制授权会跟着证书走，而不是跟着每次编译变化的 ad-hoc CDHash。首次签名时钥匙串会询问是否允许 `codesign` 使用该证书；不要把这张开发证书当成信任锚。若旧脚本曾把证书的 ACL 开放给任意 `codesign`，请在钥匙串删除 “ocrsnip Developer” 后设 `OCRSNIP_RESET_DEV_CERT=1` 再构建。从 GitHub 下载的 ad-hoc 签名构建每换一个二进制仍可能再问一次。对外分发请用 Apple Developer ID 签名并公证。
 
 ## 使用
 
@@ -46,7 +66,7 @@ zsh scripts/build.sh
 open dist/ocrsnip.app
 ```
 
-不要用 `codesign --sign -`（ad-hoc）。那种签名的 designated requirement 是当前文件的 CDHash，每编译一次系统都当成新应用，辅助功能和屏幕录制会重新询问。
+本地日常开发不要用 `codesign --sign -`（ad-hoc）。那种签名的 designated requirement 是当前文件的 CDHash，每编译一次系统都当成新应用，辅助功能和屏幕录制会重新询问。发布流程在未配置 Developer ID 时使用 ad-hoc 签名，保证应用包完整性；这不等于 Apple 公证。
 
 ```bash
 swiftc ScreenCaptureStrategy.swift OCRClipboard.swift LaunchAtLogin.swift main.swift -o ocrsnip \

@@ -31,5 +31,7 @@ codesign --force \
   --identifier com.acc.ocrsnip \
   "$app"
 
+codesign --verify --deep --strict --verbose=2 "$app"
+
 print -r -- "signed $app as $identity"
 codesign -d -r- "$app" 2>&1 | sed -n 's/^.*designated => /designated => /p'
