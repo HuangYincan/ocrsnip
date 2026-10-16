@@ -13,25 +13,19 @@
 2. 双击打开,将 `ocrsnip.app` 拖入 **Applications** 文件夹
 3. 首次打开需授权: **系统设置 → 隐私与安全性 → 辅助功能 + 屏幕录制**（授权后请完全退出再打开；之后不应再反复弹窗）。菜单栏打开「开机自启」后，若系统要求确认，请在 **系统设置 → 通用 → 登录项** 中允许 ocrsnip。
 
-GitHub 构建尚未使用 Apple Developer ID 签名和公证。从 v0.2.2 起，发布流程会对完整应用做 ad-hoc 签名，并在发布前校验 DMG 内的应用，校验失败会停止发布。首次打开仍可能被 Gatekeeper 阻止。确认来源是本项目后，先尝试打开一次，再到 **系统设置 → 隐私与安全性 → 仍要打开** 放行。
+从 **v0.3.0** 起，应用带有独立图标和应用内更新。默认每天自动检查新版本，也可以在菜单栏点击「检查更新…」。发现更新后按提示下载安装并重启，无需卸载、重新拖入 Applications；菜单中的「自动检查更新」可以关闭后台检查。旧版 v0.2.x 尚无更新器，需要先手动覆盖安装一次 v0.3.0。
+
+<img src="assets/AppIcon.png" width="128" alt="ocrsnip 应用图标">
+
+更新包和版本索引都经过 Ed25519 签名校验，下载失败或校验失败不会替换应用。更新需要重启，置顶截图不会跨重启保留。应用设置会保留；屏幕录制、辅助功能权限能否沿用取决于应用代码签名身份是否稳定。从 v0.3.0 起本地和 GitHub 发布统一使用固定证书；从旧版临时签名切换时需要重新授权一次。
+
+GitHub 构建尚未使用 Apple Developer ID 签名和公证。从 v0.3.0 起，发布流程使用固定的 ocrsnip 自签名证书，并在发布前校验应用及其更新辅助程序的证书指纹；校验失败会停止发布。首次打开仍可能被 Gatekeeper 阻止。确认来源是本项目后，先尝试打开一次，再到 **系统设置 → 隐私与安全性 → 仍要打开** 放行。
 
 ### 提示“已损坏，无法打开”
 
-已确认 v0.2.1 的发布包遗漏了完整 `.app` 签名，导致签名校验失败。若已从本项目 Releases 下载并拖入 Applications，可在终端修复该应用的签名：
+v0.2.1 的发布包遗漏了完整应用签名。请从本项目 Releases 下载新版，覆盖安装到 Applications，不要执行 `codesign --sign -` 重新签名；该命令会把固定证书身份改成临时签名，使已有屏幕录制授权失效。
 
-```bash
-codesign --force --sign - --identifier com.acc.ocrsnip /Applications/ocrsnip.app
-codesign --verify --deep --strict --verbose=2 /Applications/ocrsnip.app
-```
-
-校验通过后重新打开，并按上面的“仍要打开”步骤放行。若仍无法打开，且确认下载来源可信，可仅移除该应用的下载隔离标记后重试：
-
-```bash
-xattr -dr com.apple.quarantine /Applications/ocrsnip.app
-open /Applications/ocrsnip.app
-```
-
-这不会关闭系统全局 Gatekeeper。重新签名后，辅助功能和屏幕录制权限可能需要重新授权。
+确认下载来源是本项目后，先尝试打开一次，再到 **系统设置 → 隐私与安全性 → 仍要打开** 放行。此方式不会更改应用的签名身份。
 
 ### 能框选，但置顶图是黑块、OCR 没有结果
 
@@ -39,7 +33,7 @@ open /Applications/ocrsnip.app
 
 截图和框选前会检查屏幕录制权限，未授权时停止本次捕获，并显示「请求授权」及「打开系统设置」按钮。只有点击「请求授权」才发起系统授权，期间不会显示框选遮罩；授权并重启后再次按快捷键即可截图。已授权时不重复请求。OCR 仅在识别到文字且成功写入剪贴板后播放完成声音；没有声音不一定是快捷键或音频故障。
 
-本地开发请用 `zsh scripts/build.sh` 打包。脚本会用固定的 `ocrsnip Developer` 证书签名，辅助功能和屏幕录制授权会跟着证书走，而不是跟着每次编译变化的 ad-hoc CDHash。首次签名时钥匙串会询问是否允许 `codesign` 使用该证书；不要把这张开发证书当成信任锚。若旧脚本曾把证书的 ACL 开放给任意 `codesign`，请在钥匙串删除 “ocrsnip Developer” 后设 `OCRSNIP_RESET_DEV_CERT=1` 再构建。从 GitHub 下载的 ad-hoc 签名构建每换一个二进制仍可能再问一次。对外分发请用 Apple Developer ID 签名并公证。
+本地开发请用 `zsh scripts/build.sh` 打包。脚本只接受与 `signing/ocrsnip.cer` 匹配的固定证书，本地与 GitHub 发布使用同一私钥。钥匙串缺失原证书时构建会停止，不会自动生成另一张证书。首次签名时钥匙串可能询问是否允许 `codesign` 使用该证书；无需把自签名证书加入系统信任根。对外分发若需要免手动放行，可另外迁移到 Apple Developer ID 并公证。
 
 ## 使用
 
@@ -51,6 +45,8 @@ open /Applications/ocrsnip.app
 | 按 **Esc** 或 **双击** 置顶截图 | 关闭该截图 |
 | 菜单栏 **📷** 图标 | 可手动触发、关闭全部置顶截图、开关开机自启或退出 |
 | 菜单栏 **开机自启** | 登录 macOS 时自动打开 ocrsnip（勾选即开） |
+| 菜单栏 **检查更新…** | 检查版本，按提示下载、安装并重启 |
+| 菜单栏 **自动检查更新** | 开关每日后台版本检查，选择会保留 |
 
 OCR 识别期间菜单栏显示 ⏳；听到快门声表示文字已写入剪贴板并读回确认，此时可按 ⌘V 粘贴。写入失败会自动重试，最多 3 次。未识别到文字或失败时仅显示通知，不播放完成提示音。
 
@@ -63,7 +59,7 @@ OCR 识别期间菜单栏显示 ⏳；听到快门声表示文字已写入剪贴
 | 截图 | ScreenCaptureKit（macOS 15.2+）/ screencapture 回退 |
 | 界面 | 菜单栏图标 (NSStatusItem) |
 | 热键 | CGEventTap（全局 ⌘⇧2 / ⌘⇧3）+ Carbon 回退 |
-| 大小 | ~125KB,零依赖 |
+| 自动更新 | Sparkle 2，签名更新索引及安装包 |
 
 ## 构建
 
@@ -72,16 +68,11 @@ zsh scripts/build.sh
 open dist/ocrsnip.app
 ```
 
-本地日常开发不要用 `codesign --sign -`（ad-hoc）。那种签名的 designated requirement 是当前文件的 CDHash，每编译一次系统都当成新应用，辅助功能和屏幕录制会重新询问。发布流程在未配置 Developer ID 时使用 ad-hoc 签名，保证应用包完整性；这不等于 Apple 公证。
+固定证书的公开部分保存在 `signing/ocrsnip.cer`，私钥保存在维护者钥匙串及获准配置的 GitHub Actions secret 中。缺少私钥的其他开发者可以显式设置 `OCRSNIP_ALLOW_ADHOC=1 OCRSNIP_SIGN_IDENTITY=-` 进行隔离测试构建，但该构建不能通过正式更新打包校验。
 
-```bash
-swiftc ScreenCaptureStrategy.swift OCRClipboard.swift LaunchAtLogin.swift main.swift -o ocrsnip \
-    -framework AppKit -framework Vision -framework Carbon \
-    -framework ScreenCaptureKit -framework ApplicationServices \
-    -framework ServiceManagement
-```
+构建脚本下载并校验固定版本的 Sparkle，嵌入框架和安装辅助程序，然后从内到外签名整个应用。首次构建需要网络，之后复用 `.build` 缓存。不要只编译裸二进制，否则缺少图标、更新配置和框架。图标源文件为 `scripts/draw-icon.swift`，运行 `zsh scripts/build-icon.sh` 可重新生成各尺寸图标。
 
-上面这条只生成裸二进制，调试可以，日常请走 `scripts/build.sh`。
+发布自动更新的密钥配置、打包和验证步骤见 [应用内更新发布说明](docs/updates.md)。
 
 运行 OCR 回归测试：`zsh scripts/test-ocr.sh`。加 `--integration` 可测试真实 Vision 识别及独立的 macOS 测试剪贴板，不改动日常剪贴板。
 

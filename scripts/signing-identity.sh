@@ -1,64 +1,24 @@
 #!/bin/zsh
 set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+expected="$(openssl x509 -inform DER -in "$root/signing/ocrsnip.cer" -noout -fingerprint -sha1 | sed 's/.*=//; s/://g')"
+identity="${OCRSNIP_SIGN_IDENTITY:-$expected}"
 
-# Print a stable codesigning identity. Ad-hoc (`-`) signatures embed a
-# CDHash in the designated requirement, so TCC treats every rebuild as a
-# new app and re-prompts for Accessibility / Screen Recording.
-# A certificate-backed identity keeps the requirement as:
-#   identifier "com.acc.ocrsnip" and certificate root/leaf = H"<cert>"
-#
-# Do not treat this identity as a trust anchor. Importing with
-# `-T /usr/bin/codesign` would let any local process sign as
-# com.acc.ocrsnip and reuse Screen Recording / Accessibility grants.
-# Headless CI can set OCRSNIP_SIGN_TRUST_CODESIGN=1.
-
-if [[ -n "${OCRSNIP_SIGN_IDENTITY:-}" ]]; then
-  print -r -- "$OCRSNIP_SIGN_IDENTITY"
+# Ad-hoc signing must be explicitly opted into for isolated tests.
+if [[ "$identity" == '-' && "${OCRSNIP_ALLOW_ADHOC:-}" == '1' ]]; then
+  print -r -- '-'
   exit 0
 fi
-
-identity="ocrsnip Developer"
-
-if [[ "${OCRSNIP_RESET_DEV_CERT:-}" == "1" ]]; then
-  security delete-identity -c "$identity" >/dev/null 2>&1 || true
-fi
-
-if security find-certificate -c "$identity" >/dev/null 2>&1; then
-  print -r -- "$identity"
-  exit 0
-fi
-
-workdir="$(mktemp -d)"
-trap 'rm -rf "$workdir"' EXIT
-
-openssl req -new -x509 -days 3650 -nodes -sha256 \
-  -subj "/CN=${identity}/O=ocrsnip" \
-  -addext "basicConstraints=critical,CA:FALSE" \
-  -addext "keyUsage=critical,digitalSignature" \
-  -addext "extendedKeyUsage=codeSigning" \
-  -keyout "$workdir/key.pem" \
-  -out "$workdir/cert.pem" >/dev/null 2>&1
-
-# macOS `security import` rejects OpenSSL 3's default PKCS#12 MAC.
-openssl pkcs12 -export -legacy \
-  -inkey "$workdir/key.pem" \
-  -in "$workdir/cert.pem" \
-  -out "$workdir/ocrsnip.p12" \
-  -passout pass:ocrsnip \
-  -name "$identity" >/dev/null 2>&1
-
-import_args=(
-  "$workdir/ocrsnip.p12"
-  -k "$HOME/Library/Keychains/login.keychain-db"
-  -P ocrsnip
-)
-if [[ -n "${CI:-}" || "${OCRSNIP_SIGN_TRUST_CODESIGN:-}" == "1" ]]; then
-  # CI has no keychain prompt. Local builds should leave this unset.
-  import_args+=(-T /usr/bin/codesign -T /usr/bin/security)
-else
-  print -r -- "warning: codesign will ask for keychain access; do not treat '$identity' as a trust anchor" >&2
-fi
-
-security import "${import_args[@]}" >/dev/null
-
-print -r -- "$identity"
+[[ "$identity" == "$expected" ]] || {
+  print -u2 'Signing identity must match signing/ocrsnip.cer. Refusing to change the app identity.'
+  exit 1
+}
+keychain_args=()
+[[ -z "${OCRSNIP_SIGN_KEYCHAIN:-}" ]] || keychain_args+=("$OCRSNIP_SIGN_KEYCHAIN")
+# Include self-signed identities (without -v); no trust-root changes are needed.
+identities="$(security find-identity -p codesigning "${keychain_args[@]}")"
+[[ "$identities" == *"$expected"* ]] || {
+  print -u2 'The fixed ocrsnip signing identity is missing. Import its original .p12 backup; do not generate a replacement certificate.'
+  exit 1
+}
+print -r -- "$expected"

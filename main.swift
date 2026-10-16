@@ -524,6 +524,7 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
 
     private var statusItem: NSStatusItem!
     private var launchAtLoginItem: NSMenuItem!
+    private var appUpdater: AppUpdater!
     private var hotKeyRefs: [EventHotKeyRef] = []
     private var pinnedWindows: [PinnedScreenshotWindow] = []
     private var isCapturingRegion = false
@@ -570,6 +571,9 @@ class OCRApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate,
         menu.addItem(withTitle: "打开 Quick Action 编辑快捷键…",
                      action: #selector(showBindingsHelp),
                      keyEquivalent: "")
+        menu.addItem(.separator())
+        appUpdater = AppUpdater()
+        appUpdater.addMenuItems(to: menu)
         menu.addItem(.separator())
         menu.addItem(withTitle: "退出",
                      action: #selector(quitApp),

@@ -15,17 +15,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Validate release configuration
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+          MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+        run: |
+          test -n "$SPARKLE_PRIVATE_KEY" || { echo 'Configure the SPARKLE_PRIVATE_KEY repository secret; see docs/updates.md'; exit 1; }
+          test -n "$MACOS_SIGNING_P12" && test -n "$MACOS_SIGNING_PASSWORD" || { echo 'Configure the fixed application signing identity; see docs/updates.md'; exit 1; }
+          version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)
+          test "$GITHUB_REF_NAME" = "v$version" || { echo 'Tag and Info.plist version must match'; exit 1; }
+
       - name: Run capture and OCR regression tests
         run: zsh scripts/test-ocr.sh
 
-      # Seal the complete bundle, not just the linker-signed executable.
-      # Ad-hoc signing verifies integrity; it does not replace Developer ID
-      # signing and notarization for Gatekeeper approval.
+      - name: Import fixed application signing identity
+        env:
+          MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+          MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+        run: zsh scripts/import-ci-signing.sh
+
       - name: Build and sign app
         env:
-          OCRSNIP_SIGN_IDENTITY: '-'
           OCRSNIP_APP_DIR: ${{ github.workspace }}/ocrsnip.app
         run: zsh scripts/build.sh
+
+      - name: Verify signing identity is stable across builds
+        run: zsh scripts/test-signing.sh "$GITHUB_WORKSPACE/ocrsnip.app"
+
+      - name: Package and sign in-app update
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          OCRSNIP_RELEASE_TAG: ${{ github.ref_name }}
+        run: zsh scripts/package-update.sh "$GITHUB_WORKSPACE/ocrsnip.app" "$GITHUB_WORKSPACE/dist/updates"
+
+      - name: Test update checks and signature rejection
+        run: zsh scripts/test-updates.sh "$GITHUB_WORKSPACE/ocrsnip.app" "$GITHUB_WORKSPACE/dist/updates"
 
       - name: Build DMG
         run: |
@@ -41,7 +66,7 @@ jobs:
           mount_dir="$(mktemp -d)"
           hdiutil attach ocrsnip.dmg -readonly -nobrowse -mountpoint "$mount_dir"
           trap 'hdiutil detach "$mount_dir"; rmdir "$mount_dir"' EXIT
-          codesign --verify --deep --strict --verbose=2 "$mount_dir/ocrsnip.app"
+          zsh scripts/verify-signing.sh "$mount_dir/ocrsnip.app"
 
       - name: Create Release
         env:
@@ -49,6 +74,12 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --notes "应用已进行完整的 ad-hoc 签名，并通过 DMG 内的签名校验。尚未使用 Apple Developer ID 签名和公证，首次打开可能需要在「系统设置 → 隐私与安全性 → 仍要打开」中放行，详见 README 安装说明。" \
+            --notes "应用使用固定的 ocrsnip 自签名证书，更新索引和安装包使用独立的 Ed25519 签名。首次从旧版临时签名切换时需重新授权一次。尚未使用 Apple Developer ID 公证，首次打开可能需要在「系统设置 → 隐私与安全性 → 仍要打开」中放行。" \
             --generate-notes \
-            ocrsnip.dmg
+            ocrsnip.dmg \
+            dist/updates/ocrsnip-*.zip \
+            dist/updates/appcast.xml
+
+      - name: Remove temporary signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/ocrsnip-signing.keychain-db" 2>/dev/null || true

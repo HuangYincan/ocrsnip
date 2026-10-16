@@ -11,9 +11,29 @@
     <key>CFBundleDisplayName</key>
     <string>ocrsnip</string>
     <key>CFBundleVersion</key>
-    <string>5</string>
+    <string>6</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.2.3</string>
+    <string>0.3.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>SUFeedURL</key>
+    <string>https://github.com/HuangYincan/ocrsnip/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>pA2jHC9YmQkP2sRE86JjWvOeeRtC5O2WMUGxksuH5eA=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
+    <key>SUEnableSystemProfiling</key>
+    <false/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
+    <key>SURequireSignedFeed</key>
+    <true/>
+    <key>SUSignedFeedFailureExpirationInterval</key>
+    <integer>0</integer>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
