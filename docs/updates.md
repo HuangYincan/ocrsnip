@@ -38,6 +38,8 @@ zsh scripts/configure-release-secrets.sh
 
 不要手工修改已签名的 `appcast.xml`。修改内容后必须重新生成签名。不要覆盖既有版本的 ZIP；发新版本并递增构建号。首次启用更新器仍需用户覆盖安装 v0.3.0，以后可在应用内完成更新。
 
+若只有 CI 配置失败且尚未生成 Release，可修复主分支工作流后执行 `gh workflow run build-release.yml --ref main -f release_tag=v0.3.0`。它使用修正后的工作流检出原标签构建，不需要移动版本标签。临时签名钥匙串必须加入 CI 用户的搜索列表：`codesign --keychain` 本身不会将该钥匙串用于证书链查找。
+
 本地构建和签名更新包（使用钥匙串中的密钥）：
 
 ```zsh
